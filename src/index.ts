@@ -216,31 +216,29 @@ app.get("/api/tasks/:id", async (req, res) => {
   res.json(task);
 });
 
-// app.patch("/api/tasks/:id", async (req, res) => {
-//   const { title, desc, tools, howto, dueDate } = req.body;
+// src/index.ts
+app.delete("/api/tasks/:id", async (req, res) => {
+  try {
+    await prisma.taskAssignment.deleteMany({ where: { taskId: req.params.id } });
+    await prisma.task.delete({ where: { id: req.params.id } });
+    res.status(204).send();
+  } catch {
+    res.status(404).json({ error: "Task not found" });
+  }
+});
 
-//   if (!title || typeof title !== "string" || !title.trim()) {
-//     res.status(400).json({ error: "Title is required" });
-//     return;
-//   }
-
-//   try {
-//     const task = await prisma.task.update({
-//       where: { id: req.params.id },
-//       data: {
-//         title: title.trim(),
-//         desc: desc ?? "",
-//         tools: tools ?? [],
-//         howto: howto ?? "",
-//         dueDate: dueDate ? new Date(dueDate) : null,
-//       },
-//     });
-//     res.json(task);
-//   } catch {
-//     res.status(404).json({ error: "Task not found" });
-//   }
-// });
-
+// src/index.ts
+app.patch("/api/tasks/:id/complete", async (req, res) => {
+  try {
+    const task = await prisma.task.update({
+      where: { id: req.params.id },
+      data: { completedAt: new Date() },
+    });
+    res.json(task);
+  } catch {
+    res.status(404).json({ error: "Task not found" });
+  }
+});
 
 app.patch(
 "/api/tasks/:id",
