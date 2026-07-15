@@ -40,6 +40,12 @@ model Task {
   desc        String
   tools       String[]
   howto       String
+
+  descImages  String[]
+  toolImages  String[]
+
+  howtoImages String[]
+
   dueDate     DateTime?
   createdAt   DateTime  @default(now())
   completedAt DateTime?

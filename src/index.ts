@@ -2,8 +2,9 @@ import express from "express"
 import "dotenv/config";
 import cors from "cors"
 import { PrismaClient } from "./generated/prisma/client.js";
-
 import { PrismaPg } from "@prisma/adapter-pg";
+import { upload } from "./upload.js";
+import { uploadToCloudinary } from "./utils/uploadCloudinary.js";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 export const prisma = new PrismaClient({ adapter });
@@ -212,29 +213,167 @@ app.get("/api/tasks/:id", async (req, res) => {
   res.json(task);
 });
 
-app.patch("/api/tasks/:id", async (req, res) => {
-  const { title, desc, tools, howto, dueDate } = req.body;
+// app.patch("/api/tasks/:id", async (req, res) => {
+//   const { title, desc, tools, howto, dueDate } = req.body;
 
-  if (!title || typeof title !== "string" || !title.trim()) {
-    res.status(400).json({ error: "Title is required" });
-    return;
-  }
+//   if (!title || typeof title !== "string" || !title.trim()) {
+//     res.status(400).json({ error: "Title is required" });
+//     return;
+//   }
 
-  try {
-    const task = await prisma.task.update({
-      where: { id: req.params.id },
-      data: {
-        title: title.trim(),
-        desc: desc ?? "",
-        tools: tools ?? [],
-        howto: howto ?? "",
-        dueDate: dueDate ? new Date(dueDate) : null,
-      },
-    });
-    res.json(task);
-  } catch {
-    res.status(404).json({ error: "Task not found" });
+//   try {
+//     const task = await prisma.task.update({
+//       where: { id: req.params.id },
+//       data: {
+//         title: title.trim(),
+//         desc: desc ?? "",
+//         tools: tools ?? [],
+//         howto: howto ?? "",
+//         dueDate: dueDate ? new Date(dueDate) : null,
+//       },
+//     });
+//     res.json(task);
+//   } catch {
+//     res.status(404).json({ error: "Task not found" });
+//   }
+// });
+
+
+app.patch(
+"/api/tasks/:id",
+upload.fields([
+  {
+    name:"descImages",
+    maxCount:5
+  },
+  {
+    name:"toolImages",
+    maxCount:5
+  },
+  {
+    name:"howtoImages",
+    maxCount:10
+  },
+  {
+    name:"howtoVideo",
+    maxCount:1
   }
+]),
+
+async(req,res)=>{
+const { id } = req.params;
+
+      if (!id || Array.isArray(id)) {
+        res.status(400).json({
+          error: "Invalid task id",
+        });
+        return;
+      }
+
+
+      console.log("BODY:", req.body);
+      console.log("FILES:", req.files);
+
+ const files=req.files as {
+   [field:string]: Express.Multer.File[]
+ };
+
+
+ const descImages =
+ files.descImages
+ ? await Promise.all(
+     files.descImages.map(
+       f=>uploadToCloudinary(f,"image")
+     )
+   )
+ : [];
+
+
+ const toolImages =
+ files.toolImages
+ ? await Promise.all(
+     files.toolImages.map(
+       f=>uploadToCloudinary(f,"image")
+     )
+   )
+ : [];
+
+
+ const howtoImages =
+ files.howtoImages
+ ? await Promise.all(
+     files.howtoImages.map(
+       f=>uploadToCloudinary(f,"image")
+     )
+   )
+ : [];
+
+
+const existingTask = await prisma.task.findUnique({
+  where: {
+    id,
+  },
+});
+
+if (!existingTask) {
+  res.status(404).json({
+    error: "Task not found",
+  });
+  return;
+}
+
+
+const task = await prisma.task.update({
+  where: {
+    id,
+  },
+
+  data: {
+
+    title: req.body.title,
+
+    desc: req.body.desc,
+
+    tools: req.body.tools
+      ? JSON.parse(req.body.tools)
+      : existingTask.tools,
+
+    howto: req.body.howto,
+
+
+    // keep old images if no new upload
+    descImages:
+      descImages.length > 0
+        ? [
+            ...existingTask.descImages,
+            ...descImages,
+          ]
+        : existingTask.descImages,
+
+
+    toolImages:
+      toolImages.length > 0
+        ? [
+            ...existingTask.toolImages,
+            ...toolImages,
+          ]
+        : existingTask.toolImages,
+
+
+    howtoImages:
+      howtoImages.length > 0
+        ? [
+            ...existingTask.howtoImages,
+            ...howtoImages,
+          ]
+        : existingTask.howtoImages,
+
+  },
+});
+
+
+ res.json(task);
+
 });
 
 
