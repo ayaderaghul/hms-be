@@ -1,5 +1,6 @@
 import express from "express"
 import "dotenv/config";
+import cors from "cors"
 import { PrismaClient } from "./generated/prisma/client.js";
 
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -9,7 +10,12 @@ export const prisma = new PrismaClient({ adapter });
 
 const app = express()
 app.use(express.json());
-
+app.use(cors({
+    origin: [
+        "https://your-frontend.onrender.com"
+    ],
+    credentials: true
+}));
 
 const PORT = 3001
 
