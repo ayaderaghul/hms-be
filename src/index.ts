@@ -250,7 +250,22 @@ app.get("/api/tasks", async (req, res) => {
 });
 // src/index.ts
 app.get("/api/tasks/:id", async (req, res) => {
-  const task = await prisma.task.findUnique({ where: { id: req.params.id } });
+  const task = await prisma.task.findUnique({ 
+    where: { id: req.params.id },
+    include: {
+      room: {
+        select: {id: true, houseId: true}
+      },
+      assignedTo: {
+        include: {
+          person: {
+            select: {id: true, username: true}
+          } 
+        }
+      }
+    }
+  });
+  console.log(task)
   if (!task) {
     res.status(404).json({ error: "Task not found" });
     return;
@@ -415,7 +430,67 @@ const task = await prisma.task.update({
 });
 
 
- res.json(task);
+const assignedTo: string[] = req.body.assignedTo
+  ? JSON.parse(req.body.assignedTo)
+  : [];
+
+await prisma.$transaction(async (tx) => {
+  await tx.task.update({
+    where: { id },
+    data: {
+      title: req.body.title,
+      desc: req.body.desc,
+      tools: req.body.tools
+        ? JSON.parse(req.body.tools)
+        : existingTask.tools,
+      howto: req.body.howto,
+
+      descImages:
+        descImages.length > 0
+          ? [...existingTask.descImages, ...descImages]
+          : existingTask.descImages,
+
+      toolImages:
+        toolImages.length > 0
+          ? [...existingTask.toolImages, ...toolImages]
+          : existingTask.toolImages,
+
+      howtoImages:
+        howtoImages.length > 0
+          ? [...existingTask.howtoImages, ...howtoImages]
+          : existingTask.howtoImages,
+    },
+  });
+
+  await tx.taskAssignment.deleteMany({
+    where: {
+      taskId: id,
+    },
+  });
+
+  if (assignedTo.length > 0) {
+    await tx.taskAssignment.createMany({
+      data: assignedTo.map((personId) => ({
+        taskId: id,
+        personId,
+      })),
+    });
+  }
+});
+
+const updatedTask = await prisma.task.findUnique({
+  where: { id },
+  include: {
+    room: true,
+    assignedTo: {
+      include: {
+        person: true,
+      },
+    },
+  },
+});
+
+res.json(updatedTask);
 
 });
 
@@ -473,6 +548,48 @@ app.post("/api/houses/:id/people", async (req, res) => {
 
 
 // src/index.ts
+app.get("/api/people/:id", async (req, res) => {
+  const person = await prisma.person.findUnique({
+    where: {
+      id: req.params.id,
+    },
+    include: {
+      tasks: {
+        include: {
+          task: {
+            include: {
+              room: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!person) {
+    res.status(404).json({
+      error: "Person not found",
+    });
+    return;
+  }
+
+  res.json({
+    id: person.id,
+    username: person.username,
+    email: person.email,
+    phone: person.phone,
+    avatarUrl: null,
+
+    waitingTasks: person.tasks
+      .map(t => t.task)
+      .filter(task => !task.completedAt),
+
+    completedTasks: person.tasks
+      .map(t => t.task)
+      .filter(task => task.completedAt),
+  });
+});
+
 app.delete("/api/people/:id", async (req, res) => {
   try {
     // remove their task assignments first — Postgres will reject the
