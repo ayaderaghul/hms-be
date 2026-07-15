@@ -13,7 +13,7 @@ app.use(express.json());
 app.use(cors({
   origin: [
     "http://localhost:5173",
-    "https://hms-fe-x7ok.onrender.com",
+    "https://hms-fe-l3j1.onrender.com",
   ],
 }));
 
