@@ -44,6 +44,33 @@ app.get("/api/houses", async (req, res) => {
 
   res.json(summary);
 });
+
+app.get("/api/houses/:id", async (req, res) => {
+  const house = await prisma.house.findUnique({
+    where: { id: req.params.id },
+    include: {
+      rooms: {
+        include: { tasks: true },
+      },
+    },
+  });
+
+  if (!house) {
+    res.status(404).json({ error: "House not found" });
+    return;
+  }
+
+  const allTasks = house.rooms.flatMap((room) => room.tasks);
+  const summary = {
+      id: house.id,
+      name: house.name,
+      totalTasks: allTasks.length,
+      doneTasks: allTasks.filter((t) => t.completedAt !== null).length,
+    };
+  res.json(summary);
+});
+
+
 app.get("/api/rooms", async(req,res) => {
     const rooms = await prisma.room.findMany({
         include: {tasks: true}
@@ -158,7 +185,23 @@ app.post("/api/rooms/:id/tasks", async (req, res) => {
 
   res.status(201).json(task);
 });
+// GET /api/tasks
+app.get("/api/tasks", async (req, res) => {
+  const tasks = await prisma.task.findMany({
+    include: {
+      room: {
+        include: {
+          house: true,
+        },
+      },
+    },
+    orderBy: {
+      dueDate: "asc",
+    },
+  });
 
+  res.json(tasks);
+});
 // src/index.ts
 app.get("/api/tasks/:id", async (req, res) => {
   const task = await prisma.task.findUnique({ where: { id: req.params.id } });
