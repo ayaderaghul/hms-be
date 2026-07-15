@@ -702,6 +702,26 @@ app.post("/api/rooms/:id/tasks/from-template/:templateId", async (req, res) => {
   res.status(201).json(task);
 });
 
+app.delete("/api/templates/:id", async (req, res) => {
+  const { id } = req.params;
+
+  const template = await prisma.taskTemplate.findUnique({
+    where: { id },
+  });
+
+  if (!template) {
+    res.status(404).json({
+      error: "Template not found",
+    });
+    return;
+  }
+
+  await prisma.taskTemplate.delete({
+    where: { id },
+  });
+
+  res.status(204).send();
+});
 
 app.listen(PORT, ()=>{
     console.log(`Server running on http://localhost:${PORT}`)
