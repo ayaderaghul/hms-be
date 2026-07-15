@@ -1,4 +1,3 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -14,51 +13,64 @@ model House {
   createdAt DateTime @default(now())
   people    Person[]
   rooms     Room[]
+  taskTemplates TaskTemplate[]
+
 }
 
 model Person {
-  id      String @id @default(uuid())
+  id       String           @id @default(uuid())
   username String
   email    String
   phone    String?
-  house    House  @relation(fields: [houseId], references: [id])
   houseId  String
+  house    House            @relation(fields: [houseId], references: [id])
   tasks    TaskAssignment[]
 }
 
 model Room {
   id      String @id @default(uuid())
   name    String
-  house   House  @relation(fields: [houseId], references: [id])
   houseId String
+  house   House  @relation(fields: [houseId], references: [id])
   tasks   Task[]
 }
 
 model Task {
-  id          String    @id @default(uuid())
+  id          String           @id @default(uuid())
   title       String
   desc        String
   tools       String[]
   howto       String
-
-  descImages  String[]
-  toolImages  String[]
-
-  howtoImages String[]
-
   dueDate     DateTime?
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime         @default(now())
   completedAt DateTime?
-  room        Room      @relation(fields: [roomId], references: [id])
   roomId      String
+  descImages  String[]
+  howtoImages String[]
+  toolImages  String[]
+  room        Room             @relation(fields: [roomId], references: [id])
   assignedTo  TaskAssignment[]
 }
 
 model TaskAssignment {
-  task     Task   @relation(fields: [taskId], references: [id])
   taskId   String
-  person   Person @relation(fields: [personId], references: [id])
   personId String
+  person   Person @relation(fields: [personId], references: [id])
+  task     Task   @relation(fields: [taskId], references: [id])
 
   @@id([taskId, personId])
+}
+
+// prisma/schema.prisma
+model TaskTemplate {
+  id          String   @id @default(uuid())
+  title       String
+  desc        String
+  tools       String[]
+  howto       String
+  descImages  String[]
+  toolImages  String[]
+  howtoImages String[]
+  house       House    @relation(fields: [houseId], references: [id])
+  houseId     String
 }

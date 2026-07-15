@@ -5,8 +5,7 @@ import { PrismaClient } from "./generated/prisma/client.js";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { upload } from "./upload.js";
 import { uploadToCloudinary } from "./utils/uploadCloudinary.js";
-
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+import type { Request, Response } from "express";const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 export const prisma = new PrismaClient({ adapter });
 
 const app = express()
@@ -159,36 +158,79 @@ app.get("/api/rooms/:id/tasks", async (req, res) => {
     return;
   }
 
-  res.json({ id: room.id, name: room.name, tasks: room.tasks });
+  res.json({ id: room.id, name: room.name, houseId: room.houseId, tasks: room.tasks });
 });
+type RoomParams = {
+  id: string;
+};
+app.post(
+  "/api/rooms/:id/tasks",
+  upload.fields([
+    { name: "descImages", maxCount: 5 },
+    { name: "toolImages", maxCount: 5 },
+    { name: "howtoImages", maxCount: 10 },
+  ]),
+  async (req: Request<RoomParams>, res: Response) => {
+    const { id } = req.params;
 
-app.post("/api/rooms/:id/tasks", async (req, res) => {
-  const { title, desc, tools, howto, dueDate } = req.body;
+    if (
+      !req.body ||
+      !req.body.title ||
+      typeof req.body.title !== "string" ||
+      !req.body.title.trim()
+    ) {
+      return res.status(400).json({ error: "Title is required" });
+    }
 
-  if (!title || typeof title !== "string" || !title.trim()) {
-    res.status(400).json({ error: "Title is required" });
-    return;
+    const room = await prisma.room.findUnique({
+      where: { id },
+    });
+
+    if (!room) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    const files = req.files as {
+      [field: string]: Express.Multer.File[];
+    };
+
+    const descImages = files?.descImages
+      ? await Promise.all(
+          files.descImages.map((f) => uploadToCloudinary(f, "image"))
+        )
+      : [];
+
+    const toolImages = files?.toolImages
+      ? await Promise.all(
+          files.toolImages.map((f) => uploadToCloudinary(f, "image"))
+        )
+      : [];
+
+    const howtoImages = files?.howtoImages
+      ? await Promise.all(
+          files.howtoImages.map((f) => uploadToCloudinary(f, "image"))
+        )
+      : [];
+
+    const task = await prisma.task.create({
+      data: {
+        title: req.body.title.trim(),
+        desc: req.body.desc ?? "",
+        tools: req.body.tools ? JSON.parse(req.body.tools) : [],
+        howto: req.body.howto ?? "",
+        dueDate: req.body.dueDate
+          ? new Date(req.body.dueDate)
+          : null,
+        descImages,
+        toolImages,
+        howtoImages,
+        roomId: id,
+      },
+    });
+
+    res.status(201).json(task);
   }
-
-  const room = await prisma.room.findUnique({ where: { id: req.params.id } });
-  if (!room) {
-    res.status(404).json({ error: "Room not found" });
-    return;
-  }
-
-  const task = await prisma.task.create({
-    data: {
-      title: title.trim(),
-      desc: desc ?? "",
-      tools: tools ?? [],
-      howto: howto ?? "",
-      dueDate: dueDate ? new Date(dueDate) : null,
-      roomId: req.params.id,
-    },
-  });
-
-  res.status(201).json(task);
-});
+);
 // GET /api/tasks
 app.get("/api/tasks", async (req, res) => {
   const tasks = await prisma.task.findMany({
@@ -442,6 +484,107 @@ app.delete("/api/people/:id", async (req, res) => {
     res.status(404).json({ error: "Person not found" });
   }
 });
+
+// src/index.ts
+
+// list templates available to a room (looked up via the room's house)
+app.get("/api/rooms/:id/templates", async (req, res) => {
+  const room = await prisma.room.findUnique({ where: { id: req.params.id } });
+  if (!room) {
+    res.status(404).json({ error: "Room not found" });
+    return;
+  }
+  const templates = await prisma.taskTemplate.findMany({ where: { houseId: room.houseId } });
+  res.json(templates);
+});
+
+type HouseParams = {
+  id: string;
+};
+
+// create a new template for a house
+app.post(
+  "/api/houses/:id/templates",
+  upload.fields([
+    { name: "descImages", maxCount: 5 },
+    { name: "toolImages", maxCount: 5 },
+    { name: "howtoImages", maxCount: 10 },
+  ]),
+  async (req: express.Request<HouseParams>, res) => {
+    const { id } = req.params;
+
+    if (!req.body.title || typeof req.body.title !== "string" || !req.body.title.trim()) {
+      res.status(400).json({ error: "Title is required" });
+      return;
+    }
+
+    const house = await prisma.house.findUnique({ where: { id } });
+    if (!house) {
+      res.status(404).json({ error: "House not found" });
+      return;
+    }
+
+    const files = req.files as { [field: string]: Express.Multer.File[] };
+
+    const descImages = files.descImages
+      ? await Promise.all(files.descImages.map((f) => uploadToCloudinary(f, "image")))
+      : [];
+    const toolImages = files.toolImages
+      ? await Promise.all(files.toolImages.map((f) => uploadToCloudinary(f, "image")))
+      : [];
+    const howtoImages = files.howtoImages
+      ? await Promise.all(files.howtoImages.map((f) => uploadToCloudinary(f, "image")))
+      : [];
+
+    const template = await prisma.taskTemplate.create({
+      data: {
+        title: req.body.title.trim(),
+        desc: req.body.desc ?? "",
+        tools: req.body.tools ? JSON.parse(req.body.tools) : [],
+        howto: req.body.howto ?? "",
+        descImages,
+        toolImages,
+        howtoImages,
+        houseId: id,
+      },
+    });
+
+    res.status(201).json(template);
+  }
+);
+// stamp a task into a room from a template
+app.post("/api/rooms/:id/tasks/from-template/:templateId", async (req, res) => {
+  const room = await prisma.room.findUnique({ where: { id: req.params.id } });
+  if (!room) {
+    res.status(404).json({ error: "Room not found" });
+    return;
+  }
+
+  const template = await prisma.taskTemplate.findUnique({ where: { id: req.params.templateId } });
+  if (!template) {
+    res.status(404).json({ error: "Template not found" });
+    return;
+  }
+
+  const { dueDate } = req.body;
+
+  const task = await prisma.task.create({
+    data: {
+      title: template.title,
+      desc: template.desc,
+      tools: template.tools,
+      howto: template.howto,
+      descImages: template.descImages,
+      toolImages: template.toolImages,
+      howtoImages: template.howtoImages,
+      dueDate: dueDate ? new Date(dueDate) : null,
+      roomId: req.params.id,
+    },
+  });
+
+  res.status(201).json(task);
+});
+
 
 app.listen(PORT, ()=>{
     console.log(`Server running on http://localhost:${PORT}`)
