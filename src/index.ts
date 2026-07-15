@@ -30,6 +30,7 @@ app.get("/api/houses", async (req, res) => {
       rooms: {
         include: { tasks: true },
       },
+      people: true
     },
   });
 
@@ -40,6 +41,8 @@ app.get("/api/houses", async (req, res) => {
       name: house.name,
       totalTasks: allTasks.length,
       doneTasks: allTasks.filter((t) => t.completedAt !== null).length,
+          people: house.people.map((p) => ({ id: p.id, username: p.username })),
+
     };
   });
 
@@ -376,6 +379,71 @@ const task = await prisma.task.update({
 
 });
 
+
+// src/index.ts
+app.get("/api/houses/:id/people", async (req, res) => {
+  const people = await prisma.person.findMany({
+    where: { houseId: req.params.id },
+    include: {
+      tasks: {
+        include: { task: true },
+      },
+    },
+  });
+
+  const result = people.map((p) => ({
+    id: p.id,
+    username: p.username,
+    email: p.email,
+    tasks: p.tasks.map((assignment) => ({
+      id: assignment.task.id,
+      title: assignment.task.title,
+      completedAt: assignment.task.completedAt,
+    })),
+  }));
+
+  res.json(result);
+});
+
+
+app.post("/api/houses/:id/people", async (req, res) => {
+  const { username, email } = req.body;
+
+  if (!username || typeof username !== "string" || !username.trim()) {
+    res.status(400).json({ error: "Username is required" });
+    return;
+  }
+
+  const house = await prisma.house.findUnique({ where: { id: req.params.id } });
+  if (!house) {
+    res.status(404).json({ error: "House not found" });
+    return;
+  }
+
+  const person = await prisma.person.create({
+    data: {
+      username: username.trim(),
+      email: email ?? "",
+      houseId: req.params.id,
+    },
+  });
+
+  res.status(201).json(person);
+});
+
+
+// src/index.ts
+app.delete("/api/people/:id", async (req, res) => {
+  try {
+    // remove their task assignments first — Postgres will reject the
+    // person delete otherwise, since TaskAssignment rows still reference them
+    await prisma.taskAssignment.deleteMany({ where: { personId: req.params.id } });
+    await prisma.person.delete({ where: { id: req.params.id } });
+    res.status(204).send();
+  } catch {
+    res.status(404).json({ error: "Person not found" });
+  }
+});
 
 app.listen(PORT, ()=>{
     console.log(`Server running on http://localhost:${PORT}`)
