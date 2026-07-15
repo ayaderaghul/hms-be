@@ -1,0 +1,58 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model House {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  people    Person[]
+  rooms     Room[]
+}
+
+model Person {
+  id      String @id @default(uuid())
+  username String
+  email    String
+  phone    String?
+  house    House  @relation(fields: [houseId], references: [id])
+  houseId  String
+  tasks    TaskAssignment[]
+}
+
+model Room {
+  id      String @id @default(uuid())
+  name    String
+  house   House  @relation(fields: [houseId], references: [id])
+  houseId String
+  tasks   Task[]
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  title       String
+  desc        String
+  tools       String[]
+  howto       String
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+  room        Room      @relation(fields: [roomId], references: [id])
+  roomId      String
+  assignedTo  TaskAssignment[]
+}
+
+model TaskAssignment {
+  task     Task   @relation(fields: [taskId], references: [id])
+  taskId   String
+  person   Person @relation(fields: [personId], references: [id])
+  personId String
+
+  @@id([taskId, personId])
+}
